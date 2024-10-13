@@ -159,3 +159,24 @@ pub fn parseArgs(allocator: std.mem.Allocator) ParseError!std.AutoHashMap(HashTy
 
     return args_list;
 }
+
+/// const cmd_arg = rffr;
+/// const flag_list = splitFlagComboNonRepeat("rf", cmd_arg); // returns {'r', 'f'}
+pub fn splitFlagComboNonRepeat(comptime single_char_flags: []const u8, arg: []const u8, allocator: std.mem.Allocator) std.ArrayList(u8) {
+    var arg_copy = std.AutoHashMap(u8, u8).init(allocator);
+    defer arg_copy.deinit();
+
+    for (arg) |char| {
+        arg_copy.put(char, char) catch unreachable;
+    }
+
+    var splited = std.ArrayList(u8).init(allocator);
+    for (single_char_flags) |char| {
+        if (arg_copy.get(char)) |flag| {
+            splited.append(flag) catch unreachable;
+            _ = arg_copy.remove(char);
+        }
+    }
+
+    return splited;
+}

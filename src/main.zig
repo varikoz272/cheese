@@ -2,6 +2,21 @@ const std = @import("std");
 const Parser = @import("Parser.zig");
 
 pub fn main() void {
+    testSplit();
+}
+
+pub fn testSplit() void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+
+    const flags = Parser.splitFlagComboNonRepeat("rf", "rffr", gpa.allocator());
+    defer flags.deinit();
+    for (flags.items) |item| {
+        std.debug.print("{c}\n", .{item});
+    }
+}
+
+pub fn testParsing() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
