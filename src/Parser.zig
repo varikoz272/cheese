@@ -17,6 +17,12 @@ pub const ArgType = union(enum) {
     }
 };
 
+pub const Value = union(enum) {
+    const Self = @This();
+    Single: []const u8,
+    Many: std.ArrayList([]const u8),
+};
+
 pub fn Variable() type {
     return struct {
         const Self = @This();
@@ -93,11 +99,6 @@ pub fn parseArgs(allocator: std.mem.Allocator) ParseError!std.ArrayList(Arg()) {
     var args_list = std.ArrayList(Arg()).init(allocator);
 
     while (args_iter.next()) |arg| {
-        if (arg.len == 2 and arg[0] == '-') {
-            args_list.append(Arg().Flag(arg[1..])) catch unreachable;
-            at_module_section = false;
-        }
-
         if (arg[0] != '-') {
             if (at_module_section) {
                 args_list.append(Arg().Module(arg)) catch unreachable;
@@ -114,6 +115,7 @@ pub fn parseArgs(allocator: std.mem.Allocator) ParseError!std.ArrayList(Arg()) {
 
                 args_list.append(new) catch unreachable;
             }
+            continue;
         }
 
         if (arg.len > 2 and arg[0] == '-' and arg[1] == '-') {
@@ -126,7 +128,16 @@ pub fn parseArgs(allocator: std.mem.Allocator) ParseError!std.ArrayList(Arg()) {
             }
 
             at_module_section = false;
+            continue;
         }
+
+        if (arg[0] == '-') {
+            args_list.append(Arg().Flag(arg[1..])) catch unreachable;
+            at_module_section = false;
+            continue;
+        }
+
+        @panic("Invalid argument");
     }
 
     return args_list;
