@@ -1,10 +1,21 @@
 ﻿const std = @import("std");
 
 pub const ArgType = union(enum) {
+    const Self = @This();
+
     Flag: []const u8,
     LongFlag: []const u8,
     Option: Variable(),
     Module: []const u8,
+
+    pub fn asString(self: Self) []const u8 {
+        switch (self) {
+            .Flag => return "Flag",
+            .LongFlag => return "LongFlag",
+            .Option => return "Option",
+            .Module => return "Module",
+        }
+    }
 };
 
 pub fn Variable() type {
@@ -45,7 +56,7 @@ pub fn Arg() type {
             return Self{ .value = .{ .Option = Variable().init(variable, value) } };
         }
 
-        pub fn toString(self: Self) []const u8 {
+        pub fn asString(self: Self) []const u8 {
             switch (self.value) {
                 .Flag => |value| return value,
                 .LongFlag => |value| return value,
