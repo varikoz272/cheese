@@ -17,12 +17,6 @@ pub const ArgType = union(enum) {
     }
 };
 
-pub const Value = union(enum) {
-    const Self = @This();
-    Single: []const u8,
-    Many: std.ArrayList([]const u8),
-};
-
 pub fn Variable() type {
     return struct {
         const Self = @This();
@@ -46,6 +40,8 @@ pub fn Variable() type {
         }
     };
 }
+
+const HashType = u8;
 
 pub fn Arg() type {
     return struct {
@@ -77,10 +73,6 @@ pub fn Arg() type {
                 .Module => |value| return value,
             }
         }
-
-        pub fn hash(value: []const u8) u8 {
-            return value[0] *% if (value.len > 1) value[1] else 0;
-        }
     };
 }
 
@@ -88,7 +80,15 @@ pub const ParseError = error{
     NoValueHolder,
 };
 
-pub fn parseArgs(allocator: std.mem.Allocator) ParseError!std.ArrayList(Arg()) {
+pub fn hash(value: []const u8) HashType {
+    const a: u10 = value[0];
+    const b: u10 = if (value.len > 1) value[1] else 0;
+    const c: u10 = if (value.len > 1) value[value.len - 1] else 1;
+
+    return @intCast((a + b + c) % 256);
+}
+
+pub fn parseArgs(allocator: std.mem.Allocator) ParseError!std.AutoHashMap(HashType, Arg()) {
     var args_iter = std.process.argsWithAllocator(allocator) catch unreachable;
     defer args_iter.deinit();
 
@@ -96,43 +96,60 @@ pub fn parseArgs(allocator: std.mem.Allocator) ParseError!std.ArrayList(Arg()) {
 
     var at_module_section = true; // modules used to before flags. if not then error
 
-    var args_list = std.ArrayList(Arg()).init(allocator);
+    var args_list = std.AutoHashMap(HashType, Arg()).init(allocator);
+    var last_added_key: HashType = 0;
 
     while (args_iter.next()) |arg| {
-        if (arg[0] != '-') {
-            if (at_module_section) {
-                args_list.append(Arg().Module(arg)) catch unreachable;
-            } else {
-                if (args_list.items.len == 0) return ParseError.NoValueHolder;
+        if (arg[0] != '-') { //             module or variables value
+            if (at_module_section) { //             module
+                const arg_hash = hash(arg);
+                args_list.put(arg_hash, Arg().Module(arg)) catch unreachable;
+                last_added_key = arg_hash;
+            } else { //             variables value
+                if (args_list.count() == 0) return ParseError.NoValueHolder;
 
-                const old = args_list.swapRemove(args_list.items.len - 1);
-                const new = switch (old.value) {
-                    .Flag => |value| Arg().Option(value, arg),
-                    .LongFlag => |value| Arg().Option(value, arg),
-                    .Option => |value| Arg().Option(value.name, arg),
-                    else => unreachable,
-                };
+                const old_null = args_list.get(last_added_key);
 
-                args_list.append(new) catch unreachable;
+                if (old_null) |old| {
+                    const new = switch (old.value) {
+                        .Flag => |value| Arg().Option(value, arg),
+                        .LongFlag => |value| Arg().Option(value, arg),
+                        .Option => |value| Arg().Option(value.name, arg),
+                        else => unreachable,
+                    };
+
+                    _ = args_list.remove(last_added_key);
+                    args_list.put(last_added_key, new) catch unreachable;
+                } else {
+                    var iter = args_list.iterator();
+                    while (iter.next()) |entry| {
+                        std.debug.print("key: {}, value: {s}\n", .{ entry.key_ptr.*, entry.value_ptr.*.asString() });
+                    }
+                }
             }
             continue;
         }
 
-        if (arg.len > 2 and arg[0] == '-' and arg[1] == '-') {
+        if (arg.len > 2 and arg[0] == '-' and arg[1] == '-') { //           long flags or options (variables)
             const eql_index = std.mem.indexOf(u8, arg, "=");
-
-            if (eql_index) |index| {
-                args_list.append(Arg().Option(arg[2..index], arg[index + 1 ..])) catch unreachable;
-            } else {
-                args_list.append(Arg().LongFlag(arg[2..])) catch unreachable;
+            const arg_hash = hash(arg[2..]);
+            if (eql_index) |index| { //             option (variable)
+                args_list.put(arg_hash, Arg().Option(arg[2..index], arg[index + 1 ..])) catch unreachable;
+                last_added_key = arg_hash;
+            } else { //             long flag
+                args_list.put(arg_hash, Arg().LongFlag(arg[2..])) catch unreachable;
+                last_added_key = arg_hash;
             }
 
             at_module_section = false;
             continue;
         }
 
-        if (arg[0] == '-') {
-            args_list.append(Arg().Flag(arg[1..])) catch unreachable;
+        if (arg[0] == '-') { // short flag
+            const arg_hash = hash(arg[1..]);
+            args_list.put(arg_hash, Arg().Flag(arg[1..])) catch unreachable;
+            last_added_key = arg_hash;
+
             at_module_section = false;
             continue;
         }
