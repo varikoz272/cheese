@@ -13,9 +13,9 @@ pub fn main() void {
 
     for (args.items) |item| {
         if (item.value == .Option) {
-            std.debug.print("{s} : {s} ({s})\n", .{ item.value.Option.name, item.value.Option.value, item.value.asString() });
+            std.debug.print("{s} : {} ({s})\n", .{ item.value.Option.name, item.value.Option.int(i32) catch -1, item.value.typeAsString() });
         } else {
-            std.debug.print("{s} ({s})\n", .{ item.asString(), item.value.asString() });
+            std.debug.print("{s} ({s})\n", .{ item.asString(), item.value.typeAsString() });
         }
     }
 }

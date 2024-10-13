@@ -1,5 +1,4 @@
 ﻿const std = @import("std");
-
 pub const ArgType = union(enum) {
     const Self = @This();
 
@@ -8,7 +7,7 @@ pub const ArgType = union(enum) {
     Option: Variable(),
     Module: []const u8,
 
-    pub fn asString(self: Self) []const u8 {
+    pub fn typeAsString(self: Self) []const u8 {
         switch (self) {
             .Flag => return "Flag",
             .LongFlag => return "LongFlag",
@@ -30,6 +29,14 @@ pub fn Variable() type {
                 .name = name,
                 .value = value,
             };
+        }
+
+        pub fn int(self: Self, comptime IntType: type) std.fmt.ParseIntError!IntType {
+            return std.fmt.parseInt(IntType, self.value, 10);
+        }
+
+        pub fn float(self: Self, comptime FloatType: type) std.fmt.ParseIntError!FloatType {
+            return std.fmt.parseFloat(FloatType, self.value);
         }
     };
 }
