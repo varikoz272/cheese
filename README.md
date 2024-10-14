@@ -2,7 +2,7 @@
 
 ## Simple cross-platform command line parser for zig applications
 
-![image] (./resources/preview.png)
+![Preview](resources/preview.png)
 
 It targets the ease of usage: 
 
