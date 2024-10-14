@@ -2,6 +2,8 @@
 
 ## Simple cross-platform command line parser for zig applications
 
+![image] (./resources/preview.png)
+
 It targets the ease of usage: 
 
 - single function call to get args
