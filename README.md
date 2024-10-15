@@ -1,4 +1,4 @@
-# cheese
+# cheese (in development)
 
 ## simple cross-platform command line parser for zig applications
 
@@ -8,34 +8,24 @@ it targets the ease of usage:
 
 - single function call to get args
 - flexible parsing
-- small amount of code
-
-## currently in development
+- minimalistic source
 
 ## add to your project
 
-### via mods folder
-
-clone into your project:
+fetch into your project:
 ``` bash
-mkdir mods
-cd mods
-git clone https://github.com/varikoz272/cheese.git
-cd ..
+cd into_your_project_or_create_it_with_zig_init
+zig fetch --save https://github.com/varikoz272/cheese/archive/refs/tags/latest_version_for_example_1.0.0.tar.gz
 ```
 
 in build.zig:
 ```zig
-const cheese = b.addModule("cheese", .{
-    .root_source_file = b.path("./mods/cheese/cheese/Parser.zig"),
-});
-
-exe.root_module.addImport("cheese", cheese);
+// can paste it wherever
+const cheese = b.dependency("cheese", .{});
+exe.root_module.addImport("cheese", cheese.module("cheese"));
 ```
 
 in *.zig:
 ```zig
 const cheese = @import("cheese");
 ```
-
-fetching will be implemented later
