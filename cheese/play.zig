@@ -5,7 +5,7 @@ pub fn main() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    var args = Parser.parseArgs(gpa.allocator()) catch unreachable;
+    var args = Parser.ParseArgs(gpa.allocator()) catch unreachable;
     defer args.deinit();
 
     for (args.repeated.items) |item| {
@@ -17,7 +17,7 @@ pub fn main() void {
             } else {
                 std.debug.print("{s} : ({s})\n", .{ item.value.Option.name, arg_type });
                 for (item.value.Option.value.Multiple.items) |int|
-                    std.debug.print("   {s}\n", .{int});
+                    std.debug.print("    {s}\n", .{int});
             }
         } else {
             std.debug.print("{s} ({s})\n", .{ item.asString(), arg_type });

@@ -119,9 +119,6 @@ pub fn Variable() type {
     };
 }
 
-/// for hashing args into std.HashMap
-const HashType = u8;
-
 /// each cmd argument fiven translates into Arg()
 /// one datatype with multiple implimentations (see ArgType()
 /// which is stored as `value` field)
@@ -163,15 +160,6 @@ pub const ParseError = error{
     OutOfMemory,
 };
 
-/// only for argument name hashing
-pub fn hash(value: []const u8) HashType {
-    const a: u10 = value[0];
-    const b: u10 = if (value.len > 1) value[1] else 0;
-    const c: u10 = if (value.len > 1) value[value.len - 1] else 1;
-
-    return @intCast((a + b + c) % 256);
-}
-
 /// stores arguments
 ///
 /// check arg existance with `declared` field
@@ -190,34 +178,32 @@ pub fn ParseOutput() type {
         const Self = @This();
 
         repeated: std.ArrayList(Arg()),
-        declared: std.AutoHashMap(HashType, Arg()),
+        declared: std.StringHashMap(Arg()),
 
         pub fn init(allocator: std.mem.Allocator) Self {
             return Self{
                 .repeated = std.ArrayList(Arg()).init(allocator),
-                .declared = std.AutoHashMap(HashType, Arg()).init(allocator),
+                .declared = std.StringHashMap(Arg()).init(allocator),
             };
         }
 
-        pub fn addAndGetHash(self: *Self, arg: Arg()) std.mem.Allocator.Error!HashType {
+        pub fn add(self: *Self, arg: Arg()) std.mem.Allocator.Error!void {
             try self.repeated.append(arg);
 
-            const arg_hash = hash(arg.asString());
-            try self.declared.put(arg_hash, arg);
-            return arg_hash;
+            try self.declared.put(arg.asString(), arg);
         }
 
-        pub fn swap(self: *Self, index: usize, old_hash: HashType, new: Arg()) std.mem.Allocator.Error!void {
+        pub fn swap(self: *Self, index: usize, old_name: []const u8, new: Arg()) std.mem.Allocator.Error!void {
             _ = self.repeated.swapRemove(index);
             try self.repeated.insert(index, new);
 
-            _ = self.declared.remove(old_hash);
-            try self.declared.put(old_hash, new);
+            // _ = self.declared.remove(old_name);
+            try self.declared.put(old_name, new);
         }
 
         pub fn deinit(self: *Self) void {
             for (self.repeated.items) |arg| {
-                if (arg.value != .Option) continue;
+                if (arg.value != .Option) continue; //TODO: tf is this
                 arg.value.Option.value.deinit();
             }
 
@@ -228,7 +214,7 @@ pub fn ParseOutput() type {
 }
 
 /// return user input using 2 forms (see ParseOutput())
-///
+//
 /// play it out:
 /// ```
 /// zig build play
@@ -245,12 +231,14 @@ pub fn ParseArgs(allocator: std.mem.Allocator) ParseError!ParseOutput() {
     var at_module_section = true; // modules used to before flags. if not then error
 
     var output = ParseOutput().init(allocator);
-    var last_added_key: HashType = 0;
+    var last_added_key: []const u8 = undefined;
 
     while (args_iter.next()) |arg| {
         if (arg[0] != '-') { //             module or variables value
             if (at_module_section) { //             module
-                last_added_key = output.addAndGetHash(Arg().Module(arg)) catch return ParseError.OutOfMemory;
+                const new_arg = Arg().Module(arg);
+                output.add(Arg().Module(arg)) catch return ParseError.OutOfMemory;
+                last_added_key = new_arg.asString();
             } else { //             variables value
                 if (output.repeated.items.len == 0) return ParseError.NoValueHolder;
 
@@ -272,18 +260,25 @@ pub fn ParseArgs(allocator: std.mem.Allocator) ParseError!ParseOutput() {
 
         if (arg.len > 2 and arg[0] == '-' and arg[1] == '-') { //           long flags or options (variables)
             const eql_index = std.mem.indexOf(u8, arg, "=");
+            var new_arg: Arg() = undefined;
+
             if (eql_index) |index| { //             option (variable)
-                last_added_key = output.addAndGetHash(Arg().Option(arg[2..index], arg[index + 1 ..], allocator)) catch return ParseError.OutOfMemory;
+                new_arg = Arg().Option(arg[2..index], arg[index + 1 ..], allocator);
+                output.add(new_arg) catch return ParseError.OutOfMemory;
             } else { //             long flag
-                last_added_key = output.addAndGetHash(Arg().LongFlag(arg[2..])) catch return ParseError.OutOfMemory;
+                new_arg = Arg().LongFlag(arg[2..]);
+                output.add(new_arg) catch return ParseError.OutOfMemory;
             }
 
+            last_added_key = new_arg.asString();
             at_module_section = false;
             continue;
         }
 
         if (arg[0] == '-') { // short flag
-            last_added_key = output.addAndGetHash(Arg().Flag(arg[1..])) catch return ParseError.OutOfMemory;
+            const new_arg = Arg().Flag(arg[1..]);
+            output.add(new_arg) catch return ParseError.OutOfMemory;
+            last_added_key = new_arg.asString();
 
             at_module_section = false;
             continue;
@@ -293,24 +288,4 @@ pub fn ParseArgs(allocator: std.mem.Allocator) ParseError!ParseOutput() {
     }
 
     return output;
-}
-
-/// DO NOT USE
-pub fn splitFlagChainNonRepeat(comptime single_char_flags: []const u8, arg: []const u8, allocator: std.mem.Allocator) std.ArrayList(u8) {
-    var arg_copy = std.AutoHashMap(u8, u8).init(allocator);
-    defer arg_copy.deinit();
-
-    for (arg) |char| {
-        arg_copy.put(char, char) catch unreachable;
-    }
-
-    var splited = std.ArrayList(u8).init(allocator);
-    for (single_char_flags) |char| {
-        if (arg_copy.get(char)) |flag| {
-            splited.append(flag) catch unreachable;
-            _ = arg_copy.remove(char);
-        }
-    }
-
-    return splited;
 }
