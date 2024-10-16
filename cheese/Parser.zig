@@ -258,7 +258,7 @@ pub fn ParseArgs(allocator: std.mem.Allocator) ParseError!ParseOutput() {
             continue;
         }
 
-        if (arg.len > 2 and arg[0] == '-' and arg[1] == '-') { //           long flags or options (variables)
+        if (arg[0] == '-' and arg[1] == '-' and arg.len > 2) { //           long flags or options (variables)
             const eql_index = std.mem.indexOf(u8, arg, "=");
             var new_arg: Arg() = undefined;
 
@@ -275,11 +275,26 @@ pub fn ParseArgs(allocator: std.mem.Allocator) ParseError!ParseOutput() {
             continue;
         }
 
-        if (arg[0] == '-') { // short flag
-            const new_arg = Arg().Flag(arg[1..]);
-            output.add(new_arg) catch return ParseError.OutOfMemory;
-            last_added_key = new_arg.asString();
+        if (arg[0] == '-' and arg.len > 1) { // short flag
+            // const new_arg = Arg().Flag(arg[1..]);
+            // output.add(new_arg) catch return ParseError.OutOfMemory;
+            // last_added_key = new_arg.asString();
+            //
+            // at_module_section = false;
+            // continue;
 
+            const eql_index = std.mem.indexOf(u8, arg, "=");
+            var new_arg: Arg() = undefined;
+
+            if (eql_index) |index| { //             option (variable)
+                new_arg = Arg().Option(arg[1..index], arg[index + 1 ..], allocator);
+                output.add(new_arg) catch return ParseError.OutOfMemory;
+            } else { //             flag
+                new_arg = Arg().Flag(arg[1..]);
+                output.add(new_arg) catch return ParseError.OutOfMemory;
+            }
+
+            last_added_key = new_arg.asString();
             at_module_section = false;
             continue;
         }
