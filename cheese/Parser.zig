@@ -258,43 +258,26 @@ pub fn ParseArgs(allocator: std.mem.Allocator) ParseError!ParseOutput() {
             continue;
         }
 
-        if (arg[0] == '-' and arg[1] == '-' and arg.len > 2) { //           long flags or options (variables)
-            const eql_index = std.mem.indexOf(u8, arg, "=");
+        if (arg[0] == '-' and arg.len > 1) {
+            const eql_index_null = std.mem.indexOf(u8, arg, "=");
+            const name_start: usize = if (arg[1] == '-') 2 else 1;
+            var name: []const u8 = undefined;
             var new_arg: Arg() = undefined;
 
-            if (eql_index) |index| { //             option (variable)
-                new_arg = Arg().Option(arg[2..index], arg[index + 1 ..], allocator);
-                output.add(new_arg) catch return ParseError.OutOfMemory;
-            } else { //             long flag
-                new_arg = Arg().LongFlag(arg[2..]);
-                output.add(new_arg) catch return ParseError.OutOfMemory;
+            if (eql_index_null) |eql_index| { //                   option
+                new_arg = Arg().Option(arg[name_start..eql_index], arg[eql_index + 1 ..], allocator);
+                name = new_arg.asString();
+            } else { //                                            Flag/LongFlag
+                name = arg[name_start..];
+                new_arg = switch (name_start) {
+                    1 => Arg().Flag(name),
+                    2 => Arg().LongFlag(name),
+                    else => unreachable,
+                };
             }
 
-            last_added_key = new_arg.asString();
-            at_module_section = false;
-            continue;
-        }
-
-        if (arg[0] == '-' and arg.len > 1) { // short flag
-            // const new_arg = Arg().Flag(arg[1..]);
-            // output.add(new_arg) catch return ParseError.OutOfMemory;
-            // last_added_key = new_arg.asString();
-            //
-            // at_module_section = false;
-            // continue;
-
-            const eql_index = std.mem.indexOf(u8, arg, "=");
-            var new_arg: Arg() = undefined;
-
-            if (eql_index) |index| { //             option (variable)
-                new_arg = Arg().Option(arg[1..index], arg[index + 1 ..], allocator);
-                output.add(new_arg) catch return ParseError.OutOfMemory;
-            } else { //             flag
-                new_arg = Arg().Flag(arg[1..]);
-                output.add(new_arg) catch return ParseError.OutOfMemory;
-            }
-
-            last_added_key = new_arg.asString();
+            output.add(new_arg) catch return ParseError.OutOfMemory;
+            last_added_key = name;
             at_module_section = false;
             continue;
         }
