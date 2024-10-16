@@ -6,7 +6,7 @@ pub fn build(b: *std.Build) void {
     const play_step = b.step("play", "returns any cmd input parsed (test)");
     const play = b.addExecutable(.{
         .name = "play",
-        .root_source_file = b.path("cheese/ping.zig"),
+        .root_source_file = b.path("cheese/play.zig"),
         .target = target,
         .optimize = optimize,
     });
