@@ -4,6 +4,7 @@ const t = @import("types.zig");
 pub const ParseError = error{
     NoValueHolder,
     OutOfMemory,
+    RepeatedButNotAllowed,
 };
 
 /// stores arguments
@@ -43,7 +44,6 @@ pub fn ParseOutput() type {
             _ = self.repeated.swapRemove(index);
             try self.repeated.insert(index, new);
 
-            // _ = self.declared.remove(old_name);
             try self.declared.put(old_name, new);
         }
 
@@ -59,6 +59,12 @@ pub fn ParseOutput() type {
     };
 }
 
+pub const ParseOptions = struct {
+    chainable_flags: []const u8 = "",
+    allow_long_singledash_flags: bool = true,
+    allow_repeats: bool = true,
+};
+
 /// return user input using 2 forms (see ParseOutput())
 //
 /// play it out:
@@ -68,7 +74,7 @@ pub fn ParseOutput() type {
 /// ```
 ///
 /// since 0.1.0
-pub fn ParseArgs(allocator: std.mem.Allocator) ParseError!ParseOutput() {
+pub fn ParseArgs(comptime opts: ParseOptions, allocator: std.mem.Allocator) ParseError!ParseOutput() {
     var args_iter = std.process.argsWithAllocator(allocator) catch return ParseError.OutOfMemory;
     defer args_iter.deinit();
 
@@ -108,27 +114,63 @@ pub fn ParseArgs(allocator: std.mem.Allocator) ParseError!ParseOutput() {
             const eql_index_null = std.mem.indexOf(u8, arg, "=");
             const name_start: usize = if (arg[1] == '-') 2 else 1;
             var name: []const u8 = undefined;
-            var new_arg: t.Arg() = undefined;
 
             if (eql_index_null) |eql_index| { //                   option
-                new_arg = t.Arg().Option(arg[name_start..eql_index], arg[eql_index + 1 ..], allocator);
-                name = new_arg.asString();
+                name = arg[name_start..eql_index];
+                output.add(t.Arg().Option(name, arg[eql_index + 1 ..], allocator)) catch return ParseError.OutOfMemory;
             } else { //                                            Flag/LongFlag
                 name = arg[name_start..];
-                new_arg = switch (name_start) {
-                    1 => t.Arg().Flag(name),
-                    2 => t.Arg().LongFlag(name),
+                switch (name_start) {
+                    1 => {
+                        if (name.len > 1) {
+                            var is_chainable_flag = false;
+
+                            if (opts.chainable_flags.len > 0) {
+                                var unchained_null = try Unchain(opts.chainable_flags, name, true, allocator);
+                                if (unchained_null) |unchained| {
+                                    is_chainable_flag = true;
+                                    for (unchained.repeated.items) |flag| output.add(flag) catch return ParseError.OutOfMemory;
+                                    unchained_null.?.deinit();
+                                }
+                            }
+
+                            if (!is_chainable_flag and opts.allow_long_singledash_flags)
+                                output.add(t.Arg().Flag(name)) catch return ParseError.OutOfMemory;
+                        } else output.add(t.Arg().Flag(name)) catch return ParseError.OutOfMemory;
+                    },
+                    2 => {
+                        output.add(t.Arg().LongFlag(name)) catch return ParseError.OutOfMemory;
+                    },
                     else => unreachable,
-                };
+                }
             }
 
-            output.add(new_arg) catch return ParseError.OutOfMemory;
             last_added_key = name;
             at_module_section = false;
             continue;
         }
 
         @panic("Invalid argument");
+    }
+
+    return output;
+}
+
+/// returns null if either arg has not only
+/// chainable_flags symbols or if flag is
+/// repeated but not allowed
+fn Unchain(comptime chainable_flags: []const u8, arg: []const u8, allow_repeats: bool, allocator: std.mem.Allocator) ParseError!?ParseOutput() {
+    var hash_mapped_flags = [_]?u0{null} ** 256;
+    for (chainable_flags) |flag|
+        hash_mapped_flags[flag] = 0;
+
+    var output = ParseOutput().init(allocator);
+
+    for (arg, 0..) |possible_flag, i| {
+        if (hash_mapped_flags[possible_flag]) |_| {
+            if (output.declared.get(arg[i .. i + 1]) != null and !allow_repeats) return ParseError.RepeatedButNotAllowed;
+            output.add(t.Arg().Flag(arg[i .. i + 1])) catch return ParseError.OutOfMemory;
+        } else return null;
     }
 
     return output;

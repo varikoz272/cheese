@@ -5,7 +5,9 @@ pub fn main() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    var args = Parser.ParseArgs(gpa.allocator()) catch unreachable;
+    const chainable = "abc";
+
+    var args = Parser.ParseArgs(.{ .chainable_flags = chainable }, gpa.allocator()) catch unreachable;
     defer args.deinit();
 
     for (args.repeated.items) |item| {
