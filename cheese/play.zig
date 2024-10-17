@@ -7,7 +7,10 @@ pub fn main() void {
 
     const chainable = "abc";
 
-    var args = Parser.ParseArgs(.{ .chainable_flags = chainable }, gpa.allocator()) catch unreachable;
+    var args = Parser.ParseArgs(.{ .chainable_flags = chainable, .allow_long_singledash_flags = false }, gpa.allocator()) catch {
+        std.debug.print("ERROR", .{});
+        return;
+    };
     defer args.deinit();
 
     for (args.repeated.items) |item| {

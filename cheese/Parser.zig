@@ -5,6 +5,7 @@ pub const ParseError = error{
     NoValueHolder,
     OutOfMemory,
     RepeatedButNotAllowed,
+    WrongChain,
 };
 
 /// stores arguments
@@ -131,7 +132,7 @@ pub fn ParseArgs(comptime opts: ParseOptions, allocator: std.mem.Allocator) Pars
                                     is_chainable_flag = true;
                                     for (unchained.repeated.items) |flag| output.add(flag) catch return ParseError.OutOfMemory;
                                     unchained_null.?.deinit();
-                                }
+                                } else if (!opts.allow_long_singledash_flags) return ParseError.WrongChain;
                             }
 
                             if (!is_chainable_flag and opts.allow_long_singledash_flags)
@@ -170,7 +171,10 @@ fn Unchain(comptime chainable_flags: []const u8, arg: []const u8, allow_repeats:
         if (hash_mapped_flags[possible_flag]) |_| {
             if (output.declared.get(arg[i .. i + 1]) != null and !allow_repeats) return ParseError.RepeatedButNotAllowed;
             output.add(t.Arg().Flag(arg[i .. i + 1])) catch return ParseError.OutOfMemory;
-        } else return null;
+        } else {
+            output.deinit();
+            return null;
+        }
     }
 
     return output;
