@@ -35,17 +35,16 @@ pub fn ParseOutput() type {
             };
         }
 
-        pub fn add(self: *Self, arg: t.Arg()) std.mem.Allocator.Error!void {
-            try self.repeated.append(arg);
-
-            try self.declared.put(arg.asString(), arg);
+        pub fn add(self: *Self, arg: t.Arg()) ParseError!void {
+            self.declared.put(arg.asString(), arg) catch return ParseError.OutOfMemory;
+            self.repeated.append(arg) catch return ParseError.OutOfMemory;
         }
 
-        pub fn swap(self: *Self, index: usize, old_name: []const u8, new: t.Arg()) std.mem.Allocator.Error!void {
+        pub fn swap(self: *Self, index: usize, old_name: []const u8, new: t.Arg()) ParseError!void {
             _ = self.repeated.swapRemove(index);
-            try self.repeated.insert(index, new);
+            self.repeated.insert(index, new) catch return ParseError.OutOfMemory;
 
-            try self.declared.put(old_name, new);
+            self.declared.put(old_name, new) catch return ParseError.OutOfMemory;
         }
 
         pub fn deinit(self: *Self) void {
@@ -91,7 +90,7 @@ pub fn ParseArgs(comptime opts: ParseOptions, allocator: std.mem.Allocator) Pars
         if (arg[0] != '-') { //             module or variables value
             if (at_module_section) { //             module
                 const new_arg = t.Arg().Module(arg);
-                output.add(t.Arg().Module(arg)) catch return ParseError.OutOfMemory;
+                try output.add(t.Arg().Module(arg));
                 last_added_key = new_arg.asString();
             } else { //             variables value
                 if (output.repeated.items.len == 0) return ParseError.NoValueHolder;
@@ -105,9 +104,9 @@ pub fn ParseArgs(comptime opts: ParseOptions, allocator: std.mem.Allocator) Pars
                     else => unreachable,
                 };
 
-                if (old.value == .Option) new.value.Option.add(arg) catch unreachable;
+                if (old.value == .Option) new.value.Option.add(arg) catch return ParseError.OutOfMemory;
 
-                output.swap(output.repeated.items.len - 1, last_added_key, new) catch return ParseError.OutOfMemory;
+                try output.swap(output.repeated.items.len - 1, last_added_key, new);
             }
             continue;
         }
@@ -119,7 +118,7 @@ pub fn ParseArgs(comptime opts: ParseOptions, allocator: std.mem.Allocator) Pars
 
             if (eql_index_null) |eql_index| { //                   option
                 name = arg[name_start..eql_index];
-                output.add(t.Arg().Option(name, arg[eql_index + 1 ..], allocator)) catch return ParseError.OutOfMemory;
+                try output.add(t.Arg().Option(name, arg[eql_index + 1 ..], allocator));
             } else { //                                            Flag/LongFlag
                 name = arg[name_start..];
                 switch (name_start) {
@@ -135,19 +134,19 @@ pub fn ParseArgs(comptime opts: ParseOptions, allocator: std.mem.Allocator) Pars
                                     for (unchained.repeated.items) |flag| {
                                         if (output.declared.get(flag.asString())) |_| {
                                             if (opts.allow_flag_repeats) {
-                                                output.add(flag) catch ParseError.OutOfMemory; // TODO: tf is going on
+                                                try output.add(flag); // TODO: tf is going on
                                             } else return ParseError.RepeatsNotAllowed;
-                                        } else output.add(flag) catch return ParseError.OutOfMemory;
+                                        } else try output.add(flag);
                                     }
                                 } else if (!opts.allow_long_singledash_flags) return ParseError.WrongChain;
                             }
 
                             if (!is_chainable_flag and opts.allow_long_singledash_flags)
-                                output.add(t.Arg().Flag(name)) catch return ParseError.OutOfMemory;
-                        } else output.add(t.Arg().Flag(name)) catch return ParseError.OutOfMemory;
+                                try output.add(t.Arg().Flag(name));
+                        } else try output.add(t.Arg().Flag(name));
                     },
                     2 => {
-                        output.add(t.Arg().LongFlag(name)) catch return ParseError.OutOfMemory;
+                        try output.add(t.Arg().LongFlag(name));
                     },
                     else => unreachable,
                 }
