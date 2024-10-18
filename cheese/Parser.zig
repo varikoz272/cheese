@@ -94,26 +94,14 @@ pub fn ParseArgs(comptime opts: ParseOptions, allocator: std.mem.Allocator) Pars
                 try output.add(t.Arg().Module(arg));
                 last_added_key = new_arg.asString();
             } else { //             variables value
-                if (output.repeated.items.len == 0) return ParseError.NoValueHolder;
-
-                const old = output.repeated.getLast();
-
-                var new = switch (old.value) {
-                    .Flag => |value| t.Arg().Option(value, arg, allocator),
-                    .LongFlag => |value| t.Arg().Option(value, arg, allocator),
-                    .Option => old,
-                    else => unreachable,
-                };
-
-                if (old.value == .Option) new.value.Option.add(arg) catch return ParseError.OutOfMemory;
-
+                const new = try ParseValue(arg, output.repeated.getLast(), allocator);
                 try output.swap(output.repeated.items.len - 1, last_added_key, new);
             }
             continue;
         }
 
         if (arg[0] == '-' and arg.len > 1) {
-            var parsed = try ParseFlagOrLongOrOption(opts, arg, allocator);
+            var parsed = try ParseFlagOrChainOrLongOrOption(opts, arg, allocator);
             defer parsed.deinit();
             for (parsed.repeated.items) |flag_long_option| try output.add(flag_long_option);
 
@@ -128,7 +116,22 @@ pub fn ParseArgs(comptime opts: ParseOptions, allocator: std.mem.Allocator) Pars
     return output;
 }
 
-pub fn ParseFlagOrLongOrOption(comptime opts: ParseOptions, full_arg: []const u8, allocator: std.mem.Allocator) ParseError!ParseOutput() {
+pub fn ParseValue(value: []const u8, value_holder: t.Arg(), allocator: std.mem.Allocator) ParseError!t.Arg() {
+    if (value.len == 0) return ParseError.WrongArgLength;
+
+    var new_holder = switch (value_holder.value) {
+        .Flag => t.Arg().Option(value_holder.asString(), value, allocator),
+        .LongFlag => t.Arg().Option(value_holder.asString(), value, allocator),
+        .Option => value_holder,
+        else => unreachable,
+    };
+
+    if (value_holder.value == .Option) new_holder.value.Option.add(value) catch return ParseError.OutOfMemory;
+
+    return new_holder;
+}
+
+pub fn ParseFlagOrChainOrLongOrOption(comptime opts: ParseOptions, full_arg: []const u8, allocator: std.mem.Allocator) ParseError!ParseOutput() {
     if (full_arg.len < 2) return ParseError.WrongArgLength;
 
     if (full_arg[1] != '-') return ParseFlagOrChain(opts, full_arg[1..], allocator); // single -
@@ -175,7 +178,7 @@ pub fn ParseFlagOrChain(comptime opts: ParseOptions, name: []const u8, allocator
     if (opts.allow_long_singledash_flags) {
         try output.add(t.Arg().Flag(name));
         return output; // long flag with -
-    }
+    } else return ParseError.WrongArgLength;
 
     unreachable;
 }
