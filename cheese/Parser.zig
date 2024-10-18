@@ -6,6 +6,7 @@ pub const ParseError = error{
     OutOfMemory,
     RepeatsNotAllowed,
     WrongChain,
+    WrongArgLength,
 };
 
 /// stores arguments
@@ -62,7 +63,7 @@ pub fn ParseOutput() type {
 pub const ParseOptions = struct {
     chainable_flags: []const u8 = "",
     allow_long_singledash_flags: bool = true,
-    allow_flag_repeats: bool = true,
+    allow_inchain_repeats: bool = true,
 };
 
 /// return user input using 2 forms (see ParseOutput())
@@ -123,31 +124,11 @@ pub fn ParseArgs(comptime opts: ParseOptions, allocator: std.mem.Allocator) Pars
                 name = arg[name_start..];
                 switch (name_start) {
                     1 => {
-                        if (name.len > 1) {
-                            var is_chainable_flag = false;
-
-                            if (opts.chainable_flags.len > 0) {
-                                var unchained_null = try Unchain(opts.chainable_flags, name, true, allocator);
-                                if (unchained_null) |unchained| {
-                                    defer unchained_null.?.deinit();
-                                    is_chainable_flag = true;
-                                    for (unchained.repeated.items) |flag| {
-                                        if (output.declared.get(flag.asString())) |_| {
-                                            if (opts.allow_flag_repeats) {
-                                                try output.add(flag); // TODO: tf is going on
-                                            } else return ParseError.RepeatsNotAllowed;
-                                        } else try output.add(flag);
-                                    }
-                                } else if (!opts.allow_long_singledash_flags) return ParseError.WrongChain;
-                            }
-
-                            if (!is_chainable_flag and opts.allow_long_singledash_flags)
-                                try output.add(t.Arg().Flag(name));
-                        } else try output.add(t.Arg().Flag(name));
+                        var parsed = try ParseFlagOrChain(opts, name, allocator);
+                        defer parsed.deinit();
+                        for (parsed.repeated.items) |flag| try output.add(flag);
                     },
-                    2 => {
-                        try output.add(t.Arg().LongFlag(name));
-                    },
+                    2 => try output.add(t.Arg().LongFlag(name)),
                     else => unreachable,
                 }
             }
@@ -163,6 +144,41 @@ pub fn ParseArgs(comptime opts: ParseOptions, allocator: std.mem.Allocator) Pars
     return output;
 }
 
+pub fn ParseFlagOrChain(comptime opts: ParseOptions, name: []const u8, allocator: std.mem.Allocator) ParseError!ParseOutput() {
+    var output = ParseOutput().init(allocator);
+    errdefer output.deinit();
+
+    if (name.len == 0) return ParseError.WrongArgLength;
+
+    if (name.len == 1) {
+        try output.add(t.Arg().Flag(name));
+        return output; // just a flag
+    }
+
+    if (opts.chainable_flags.len > 0) {
+        var unchained_null = try Unchain(opts.chainable_flags, name, opts.allow_inchain_repeats, allocator);
+
+        if (unchained_null) |unchained| {
+            defer unchained_null.?.deinit();
+            for (unchained.repeated.items) |flag| try output.add(flag);
+            return output; // chained flags
+        }
+
+        if (opts.allow_long_singledash_flags) {
+            try output.add(t.Arg().Flag(name));
+            return output; // long flag with -
+        }
+        return ParseError.WrongArgLength;
+    }
+
+    if (opts.allow_long_singledash_flags) {
+        try output.add(t.Arg().Flag(name));
+        return output; // long flag with -
+    }
+
+    unreachable;
+}
+
 /// returns null if either arg has not only
 /// chainable_flags symbols or if flag is
 /// repeated but not allowed
@@ -172,11 +188,12 @@ fn Unchain(comptime chainable_flags: []const u8, arg: []const u8, allow_repeats:
         hash_mapped_flags[flag] = 0;
 
     var output = ParseOutput().init(allocator);
+    errdefer output.deinit();
 
     for (arg, 0..) |possible_flag, i| {
         if (hash_mapped_flags[possible_flag]) |_| {
             if (output.declared.get(arg[i .. i + 1]) != null and !allow_repeats) return ParseError.RepeatsNotAllowed;
-            output.add(t.Arg().Flag(arg[i .. i + 1])) catch return ParseError.OutOfMemory;
+            try output.add(t.Arg().Flag(arg[i .. i + 1]));
         } else {
             output.deinit();
             return null;
