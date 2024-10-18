@@ -4,7 +4,7 @@ const t = @import("types.zig");
 pub const ParseError = error{
     NoValueHolder,
     OutOfMemory,
-    RepeatedButNotAllowed,
+    RepeatsNotAllowed,
     WrongChain,
 };
 
@@ -63,7 +63,7 @@ pub fn ParseOutput() type {
 pub const ParseOptions = struct {
     chainable_flags: []const u8 = "",
     allow_long_singledash_flags: bool = true,
-    allow_repeats: bool = true,
+    allow_flag_repeats: bool = true,
 };
 
 /// return user input using 2 forms (see ParseOutput())
@@ -84,6 +84,7 @@ pub fn ParseArgs(comptime opts: ParseOptions, allocator: std.mem.Allocator) Pars
     var at_module_section = true; // modules used to before flags. if not then error
 
     var output = ParseOutput().init(allocator);
+    errdefer output.deinit();
     var last_added_key: []const u8 = undefined;
 
     while (args_iter.next()) |arg| {
@@ -129,9 +130,15 @@ pub fn ParseArgs(comptime opts: ParseOptions, allocator: std.mem.Allocator) Pars
                             if (opts.chainable_flags.len > 0) {
                                 var unchained_null = try Unchain(opts.chainable_flags, name, true, allocator);
                                 if (unchained_null) |unchained| {
+                                    defer unchained_null.?.deinit();
                                     is_chainable_flag = true;
-                                    for (unchained.repeated.items) |flag| output.add(flag) catch return ParseError.OutOfMemory;
-                                    unchained_null.?.deinit();
+                                    for (unchained.repeated.items) |flag| {
+                                        if (output.declared.get(flag.asString())) |_| {
+                                            if (opts.allow_flag_repeats) {
+                                                output.add(flag) catch ParseError.OutOfMemory; // TODO: tf is going on
+                                            } else return ParseError.RepeatsNotAllowed;
+                                        } else output.add(flag) catch return ParseError.OutOfMemory;
+                                    }
                                 } else if (!opts.allow_long_singledash_flags) return ParseError.WrongChain;
                             }
 
@@ -169,7 +176,7 @@ fn Unchain(comptime chainable_flags: []const u8, arg: []const u8, allow_repeats:
 
     for (arg, 0..) |possible_flag, i| {
         if (hash_mapped_flags[possible_flag]) |_| {
-            if (output.declared.get(arg[i .. i + 1]) != null and !allow_repeats) return ParseError.RepeatedButNotAllowed;
+            if (output.declared.get(arg[i .. i + 1]) != null and !allow_repeats) return ParseError.RepeatsNotAllowed;
             output.add(t.Arg().Flag(arg[i .. i + 1])) catch return ParseError.OutOfMemory;
         } else {
             output.deinit();
