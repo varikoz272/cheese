@@ -113,33 +113,34 @@ pub fn ParseArgs(comptime opts: ParseOptions, allocator: std.mem.Allocator) Pars
         }
 
         if (arg[0] == '-' and arg.len > 1) {
-            const eql_index_null = std.mem.indexOf(u8, arg, "=");
-            const name_start: usize = if (arg[1] == '-') 2 else 1;
-            var name: []const u8 = undefined;
+            var parsed = try ParseFlagOrLongOrOption(opts, arg, allocator);
+            defer parsed.deinit();
+            for (parsed.repeated.items) |flag_long_option| try output.add(flag_long_option);
 
-            if (eql_index_null) |eql_index| { //                   option
-                name = arg[name_start..eql_index];
-                try output.add(t.Arg().Option(name, arg[eql_index + 1 ..], allocator));
-            } else { //                                            Flag/LongFlag
-                name = arg[name_start..];
-                switch (name_start) {
-                    1 => {
-                        var parsed = try ParseFlagOrChain(opts, name, allocator);
-                        defer parsed.deinit();
-                        for (parsed.repeated.items) |flag| try output.add(flag);
-                    },
-                    2 => try output.add(t.Arg().LongFlag(name)),
-                    else => unreachable,
-                }
-            }
-
-            last_added_key = name;
+            last_added_key = parsed.repeated.items[parsed.repeated.items.len - 1].asString();
             at_module_section = false;
             continue;
         }
 
-        @panic("Invalid argument");
+        unreachable;
     }
+
+    return output;
+}
+
+pub fn ParseFlagOrLongOrOption(comptime opts: ParseOptions, full_arg: []const u8, allocator: std.mem.Allocator) ParseError!ParseOutput() {
+    if (full_arg.len < 2) return ParseError.WrongArgLength;
+
+    if (full_arg[1] != '-') return ParseFlagOrChain(opts, full_arg[1..], allocator); // single -
+
+    var output = ParseOutput().init(allocator);
+    errdefer output.deinit();
+
+    const eql_index_null = std.mem.indexOf(u8, full_arg[2..], "=");
+
+    if (eql_index_null) |eql_index| {
+        try output.add(t.Arg().Option(full_arg[2..], full_arg[eql_index + 1 ..], allocator));
+    } else try output.add(t.Arg().LongFlag(full_arg[2..]));
 
     return output;
 }
